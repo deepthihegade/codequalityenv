@@ -1,81 +1,35 @@
-import os
-import sys
-from openai import OpenAI
-from server.environment import Environment
-from models import Action
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Optional
 
-# Environment variables
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
+app = FastAPI()
 
-# OpenAI client pointing to HuggingFace
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=HF_TOKEN
-)
+tasks = [
+    {"level": "easy", "buggy_code": "def greet(name)\n    print('Hello, ' + name)", "error_hint": "syntax"},
+    {"level": "medium", "buggy_code": "def find_max(nums):\n    max_val = 0\n    for n in nums:\n        if n > max_val:\n            max_val = n\n    return max_val", "error_hint": "logic"},
+    {"level": "hard", "buggy_code": "def has_duplicate(nums):\n    for i in range(len(nums)):\n        for j in range(len(nums)):\n            if i != j and nums[i] == nums[j]:\n                return True\n    return False", "error_hint": "performance"},
+]
 
-def ask_llm(buggy_code: str, error_hint: str, task_level: str) -> str:
-    prompt = f"""You are a Python code reviewer.
-You are given buggy Python code with a {error_hint} error ({task_level} level).
-Fix the bug and return ONLY the corrected Python code, nothing else.
+state = {"index": 0, "step_count": 0, "episode_id": "ep-1"}
 
-Buggy code:
-{buggy_code}
-"""
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=300
-    )
-    return response.choices[0].message.content.strip()
+class Action(BaseModel):
+    action_type: str
+    line_number: Optional[int] = None
+    code_patch: Optional[str] = None
 
-def run_task(env: Environment, task_name: str) -> float:
-    result = env.reset()
-    rewards = []
-    done = False
-    step = 0
+@app.post("/reset")
+def reset():
+    state["index"] = 0
+    state["step_count"] = 0
+    t = tasks[0]
+    return {"observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]}, "reward": 0.0, "done": False, "feedback": "New episode started!"}
 
-    print(f"[START] task={task_name} env=code-quality-env model={MODEL_NAME}")
+@app.post("/step")
+def step(action: Action):
+    t = tasks[state["index"]]
+    state["step_count"] += 1
+    return {"observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]}, "reward": 0.5, "done": False, "feedback": "OK"}
 
-    while not done and step < 5:
-        step += 1
-        obs = result.observation
-
-        # Ask LLM to fix the code
-        fix = ask_llm(obs.buggy_code, obs.error_hint, obs.task_level)
-
-        # Clean up LLM response (remove markdown code blocks if any)
-        fix = fix.replace("```python", "").replace("```", "").strip()
-
-        action = Action(action_type="suggest_fix", code_patch=fix)
-        result = env.step(action)
-        rewards.append(result.reward)
-        done = result.done
-
-        print(f"[STEP] step={step} action=suggest_fix reward={result.reward:.2f} done={str(done).lower()} error=null")
-
-        if result.reward >= 1.0:
-            break
-
-    score = max(rewards) if rewards else 0.0
-    success = score >= 1.0
-    rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-
-    print(f"[END] success={str(success).lower()} steps={step} score={score:.2f} rewards={rewards_str}")
-    return score
-
-def main():
-    env = Environment()
-    tasks = ["easy", "medium", "hard"]
-    total_score = 0.0
-
-    for task in tasks:
-        score = run_task(env, task)
-        total_score += score
-
-    avg = total_score / len(tasks)
-    print(f"\nAverage score: {avg:.2f}")
-
-if __name__ == "__main__":
-    main()
+@app.get("/state")
+def get_state():
+    return {"episode_id": state["episode_id"], "step_count": state["step_count"], "current_task": tasks[state["index"]]["level"]}
