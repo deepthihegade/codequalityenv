@@ -1,27 +1,23 @@
-from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import Optional
 
-@dataclass
-class Action:
-    action_type: str        # "identify_bug" or "suggest_fix"
+class Action(BaseModel):
+    action_type: str
     line_number: Optional[int] = None
     code_patch: Optional[str] = None
 
-@dataclass
-class Observation:
+class Observation(BaseModel):
     buggy_code: str
-    task_level: str         # "easy", "medium", "hard"
-    error_hint: str         # "syntax", "logic", "performance"
+    task_level: str
+    error_hint: str
 
-@dataclass
-class StepResult:
+class StepResult(BaseModel):
     observation: Observation
-    reward: float           # 0.0 to 1.0
+    reward: float
     done: bool
     feedback: str
 
-@dataclass
-class State:
+class State(BaseModel):
     episode_id: str
     step_count: int
     current_task: str
