@@ -1,0 +1,12 @@
+toml[project]
+name = "code-quality-env"
+version = "0.1.0"
+description = "RL environment for AI code review agents"
+authors = [{name = "Neurobytes"}]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "openai",
+    "pydantic"
+]
