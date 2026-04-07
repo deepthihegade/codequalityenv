@@ -1,53 +1,51 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from environment import Environment
 from models import Action
-import json
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = FastAPI()
 env = Environment()
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        message = json.loads(data)
+@app.post("/reset")
+def reset():
+    result = env.reset()
+    return {
+        "observation": {
+            "buggy_code": result.observation.buggy_code,
+            "task_level": result.observation.task_level,
+            "error_hint": result.observation.error_hint
+        },
+        "reward": result.reward,
+        "done": result.done,
+        "feedback": result.feedback
+    }
 
-        if message["method"] == "reset":
-            result = env.reset()
-            await websocket.send_text(json.dumps({
-                "observation": {
-                    "buggy_code": result.observation.buggy_code,
-                    "task_level": result.observation.task_level,
-                    "error_hint": result.observation.error_hint
-                },
-                "reward": result.reward,
-                "done": result.done,
-                "feedback": result.feedback
-            }))
+@app.post("/step")
+def step(action: dict):
+    a = Action(
+        action_type=action["action_type"],
+        line_number=action.get("line_number"),
+        code_patch=action.get("code_patch")
+    )
+    result = env.step(a)
+    return {
+        "observation": {
+            "buggy_code": result.observation.buggy_code,
+            "task_level": result.observation.task_level,
+            "error_hint": result.observation.error_hint
+        },
+        "reward": result.reward,
+        "done": result.done,
+        "feedback": result.feedback
+    }
 
-        elif message["method"] == "step":
-            action = Action(
-                action_type=message["action"]["action_type"],
-                line_number=message["action"].get("line_number"),
-                code_patch=message["action"].get("code_patch")
-            )
-            result = env.step(action)
-            await websocket.send_text(json.dumps({
-                "observation": {
-                    "buggy_code": result.observation.buggy_code,
-                    "task_level": result.observation.task_level,
-                    "error_hint": result.observation.error_hint
-                },
-                "reward": result.reward,
-                "done": result.done,
-                "feedback": result.feedback
-            }))
-
-        elif message["method"] == "state":
-            state = env.state
-            await websocket.send_text(json.dumps({
-                "episode_id": state.episode_id,
-                "step_count": state.step_count,
-                "current_task": state.current_task
-            }))
+@app.get("/state")
+def state():
+    s = env.state
+    return {
+        "episode_id": s.episode_id,
+        "step_count": s.step_count,
+        "current_task": s.current_task
+    }
