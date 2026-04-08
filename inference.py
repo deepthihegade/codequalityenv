@@ -42,7 +42,7 @@ class Action(BaseModel):
 
 def evaluate_fix(code_patch: str, task: dict):
     if not code_patch:
-        return 0.0, "No fix provided."
+        return 0.01, "No fix provided."
     full_code = code_patch + "\n" + task["test"]
     try:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -51,17 +51,17 @@ def evaluate_fix(code_patch: str, task: dict):
         result = subprocess.run(["python3", fname], capture_output=True, text=True, timeout=5)
         os.unlink(fname)
         if "PASS" in result.stdout:
-            return 1.0, "All tests passed! Perfect fix 🎉"
+            return 0.99, "All tests passed! Perfect fix 🎉"
         elif result.returncode == 0:
             return 0.5, "Code runs but tests didn't pass."
         else:
             if "SyntaxError" in result.stderr:
-                return 0.0, f"Syntax error: {result.stderr[:120]}"
+                return 0.01, f"Syntax error: {result.stderr[:120]}"
             return 0.2, f"Fix has errors: {result.stderr[:120]}"
     except subprocess.TimeoutExpired:
-        return 0.0, "Code timed out — possible infinite loop."
+        return 0.01, "Code timed out — possible infinite loop."
     except Exception as e:
-        return 0.0, f"Error: {str(e)}"
+        return 0.01, f"Error: {str(e)}"
 
 
 @app.post("/reset")
@@ -72,7 +72,7 @@ def reset():
     t = tasks[0]
     return {
         "observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]},
-        "reward": 0.0,
+        "reward": 0.01,
         "done": False,
         "feedback": "New episode started! Fix the bug."
     }
@@ -139,66 +139,3 @@ def home():
         }
     }
 
-
-def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
-    """Run inference and print structured output blocks."""
-    global state
-
-    client = OpenAI(
-        base_url=os.environ.get("API_BASE_URL", "https://api.openai.com/v1"),
-        api_key=os.environ.get("API_KEY", "dummy"),
-    )
-
-    for episode in range(num_episodes):
-        state["episode_id"] = f"ep-{episode + 1}"
-        state["index"] = 0
-        state["step_count"] = 0
-
-        task = tasks[state["index"]]
-        task_name = f"{task['level']}-task-{state['index']}"
-
-        print(f"[START] task={task_name}", flush=True)
-
-        total_reward = 0.0
-        for step_num in range(1, steps_per_episode + 1):
-            state["step_count"] += 1
-
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are a Python bug fixer. Return only the fixed code, no explanation."},
-                        {"role": "user", "content": f"Fix this buggy Python code:\n\n{task['buggy_code']}\n\nHint: {task['error_hint']}"}
-                    ],
-                    timeout=60,
-                    max_tokens=200
-                )
-                code_patch = response.choices[0].message.content.strip()
-                if code_patch.startswith("```"):
-                    code_patch = "\n".join(code_patch.split("\n")[1:-1])
-            except Exception as e:
-                print(f"LLM call failed: {e}", flush=True)
-                code_patch = task["buggy_code"]
-
-            reward, feedback = evaluate_fix(code_patch, task)
-            total_reward += reward
-
-            print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
-
-            if reward >= 0.8:
-                break
-
-        final_score = min(total_reward / state["step_count"], 1.0)
-        print(f"[END] task={task_name} score={final_score:.2f} steps={state['step_count']}", flush=True)
-
-
-if __name__ == "__main__":
-
-    def _hard_timeout(signum, frame):
-        print("[END] task=timeout score=0.00 steps=0", flush=True)
-        sys.exit(0)
-
-    signal.signal(signal.SIGALRM, _hard_timeout)
-    signal.alarm(25 * 60)
-
-    run_inference(num_episodes=1, steps_per_episode=3)
