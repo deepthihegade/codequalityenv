@@ -4,6 +4,9 @@ from typing import Optional
 import subprocess
 import tempfile
 import os
+from openai import OpenAI
+import signal
+import sys
 
 app = FastAPI()
 
@@ -125,7 +128,6 @@ def get_state():
     }
 
 
-# ✅ YE BAHAR HONA CHAHIYE (TOP LEVEL)
 @app.get("/")
 def home():
     return {
@@ -141,57 +143,62 @@ def home():
 def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
     """Run inference and print structured output blocks."""
     global state
-    
+
+    client = OpenAI(
+        base_url=os.environ.get("API_BASE_URL", "https://api.openai.com/v1"),
+        api_key=os.environ.get("API_KEY", "dummy"),
+    )
+
     for episode in range(num_episodes):
         state["episode_id"] = f"ep-{episode + 1}"
         state["index"] = 0
         state["step_count"] = 0
-        
+
         task = tasks[state["index"]]
         task_name = f"{task['level']}-task-{state['index']}"
-        
-        # Print START block
+
         print(f"[START] task={task_name}", flush=True)
-        
-        # Simulate steps - try to fix the bug
+
         total_reward = 0.0
         for step_num in range(1, steps_per_episode + 1):
             state["step_count"] += 1
-            
-            # Simple heuristic fix attempt
-            if task["level"] == "easy":
-                # Fix: add missing colon
-                code_patch = "def greet(name):\n    print('Hello, ' + name)"
-            elif task["level"] == "medium":
-                # Fix: handle negative numbers
-                code_patch = "def find_max(nums):\n    return max(nums) if nums else 0"
-            else:
-                # Fix: use set for performance
-                code_patch = "def has_duplicate(nums):\n    return len(nums) != len(set(nums))"
-            
+
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a Python bug fixer. Return only the fixed code, no explanation."},
+                        {"role": "user", "content": f"Fix this buggy Python code:\n\n{task['buggy_code']}\n\nHint: {task['error_hint']}"}
+                    ],
+                    timeout=60,
+                    max_tokens=200
+                )
+                code_patch = response.choices[0].message.content.strip()
+                if code_patch.startswith("```"):
+                    code_patch = "\n".join(code_patch.split("\n")[1:-1])
+            except Exception as e:
+                print(f"LLM call failed: {e}", flush=True)
+                code_patch = task["buggy_code"]
+
             reward, feedback = evaluate_fix(code_patch, task)
             total_reward += reward
-            
-            # Print STEP block
+
             print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
-            
+
             if reward >= 0.8:
                 break
-        
-        # Print END block
+
         final_score = min(total_reward / state["step_count"], 1.0)
         print(f"[END] task={task_name} score={final_score:.2f} steps={state['step_count']}", flush=True)
 
 
 if __name__ == "__main__":
-    import sys
-    import signal
 
     def _hard_timeout(signum, frame):
         print("[END] task=timeout score=0.00 steps=0", flush=True)
         sys.exit(0)
 
     signal.signal(signal.SIGALRM, _hard_timeout)
-    signal.alarm(25 * 60)  # kill after 25 mins
+    signal.alarm(25 * 60)
 
     run_inference(num_episodes=1, steps_per_episode=3)
