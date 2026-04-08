@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Code Quality · OpenEnv</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --surface-2: #f9f9fb;
+      --border: rgba(0,0,0,0.07);
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #aeaeb2;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --accent-light: rgba(0,113,227,0.08);
+      --green: #34c759;
+      --green-light: rgba(52,199,89,0.1);
+      --red: #ff3b30;
+      --red-light: rgba(255,59,48,0.1);
+      --orange: #ff9f0a;
+      --orange-light: rgba(255,159,10,0.1);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.09), 0 2px 8px rgba(0,0,0,0.05);
+      --radius: 18px;
+      --radius-sm: 10px;
+      --radius-xs: 6px;
+      --transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 36px;
+      animation: fadeDown 0.5s ease both;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-mark {
+      width: 34px; height: 34px;
+      background: var(--text-primary);
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+    }
+
+    .logo-mark svg { color: white; }
+
+    .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+    }
+
+    .logo-sub {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-tertiary);
+      margin-top: 1px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+      transition: background var(--transition);
+    }
+
+    .status-dot.active { background: var(--green); box-shadow: 0 0 0 2px var(--green-light); }
+    .status-dot.loading { background: var(--orange); animation: pulse 1s infinite; }
+
+    /* ── Main card ── */
+    .main-wrapper {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow-md);
+      animation: fadeUp 0.5s ease both;
+    }
+
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.10s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+    .card:nth-child(4) { animation-delay: 0.20s; }
+
+    /* ── Section labels ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: 14px;
+    }
+
+    /* ── Episode hero ── */
+    .episode-hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .episode-info { flex: 1; }
+
+    .episode-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .episode-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    .difficulty-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 11px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+
+    .difficulty-badge.easy   { background: var(--green-light);  color: #1a7a35; border-color: rgba(52,199,89,0.2); }
+    .difficulty-badge.medium { background: var(--orange-light); color: #9a5c00; border-color: rgba(255,159,10,0.2); }
+    .difficulty-badge.hard   { background: var(--red-light);    color: #c0180d; border-color: rgba(255,59,48,0.2); }
+
+    /* ── Start button ── */
+    .btn-start {
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--text-primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.2px;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .btn-start:hover { background: #3a3a3c; transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+    .btn-start:active { transform: translateY(0); box-shadow: none; }
+    .btn-start:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ── Hint box ── */
+    .hint-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      font-style: italic;
+      line-height: 1.55;
+      min-height: 44px;
+      transition: all var(--transition);
+    }
+
+    .hint-box.populated {
+      background: #fff8ec;
+      border-color: rgba(255,159,10,0.25);
+      color: #6b4200;
+      font-style: normal;
+    }
+
+    /* ── Code editor ── */
+    .code-block {
+      background: #1c1c1e;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .code-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .code-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .code-dots span {
+      width: 11px; height: 11px;
+      border-radius: 50%;
+    }
+
+    .dot-red    { background: #ff5f57; }
+    .dot-yellow { background: #febc2e; }
+    .dot-green  { background: #28c840; }
+
+    .code-lang {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.04em;
+    }
+
+    .code-display {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #e2e2e6;
+      padding: 18px 20px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 80px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .code-display:empty::before {
+      content: "// Start an episode to see the buggy code...";
+      color: rgba(255,255,255,0.2);
+      font-style: italic;
+    }
+
+    .code-display::-webkit-scrollbar { width: 4px; }
+    .code-display::-webkit-scrollbar-track { background: transparent; }
+    .code-display::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+    /* ── Action row ── */
+    .action-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn-action {
+      padding: 13px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: var(--text-primary);
+    }
+
+    .btn-action:hover {
+      background: var(--surface-2);
+      border-color: rgba(0,0,0,0.12);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-action:active { transform: translateY(0); }
+    .btn-action:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    .btn-action.primary {
+      background: var(--accent);
+      color: white;
+      border-color: transparent;
+    }
+
+    .btn-action.primary:hover { background: var(--accent-hover); }
+
+    /* ── Patch input ── */
+    .patch-textarea {
+      width: 100%;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--text-primary);
+      background: var(--surface-2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      resize: vertical;
+      min-height: 120px;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+
+    .patch-textarea::placeholder { color: var(--text-tertiary); }
+
+    .patch-textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+      background: var(--surface);
+    }
+
+    /* ── Reward/Feedback panel ── */
+    .result-panel {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-panel.visible { display: flex; }
+
+    .reward-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .reward-value {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -2px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .reward-value.positive { color: var(--green); }
+    .reward-value.negative { color: var(--red); }
+    .reward-value.neutral  { color: var(--text-secondary); }
+
+    .reward-label {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .feedback-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .feedback-box.success { background: var(--green-light); border-color: rgba(52,199,89,0.2); color: #1a7a35; }
+    .feedback-box.error   { background: var(--red-light);   border-color: rgba(255,59,48,0.2);  color: #c0180d; }
+
+    .empty-state {
+      text-align: center;
+      padding: 20px 0 8px;
+      color: var(--text-tertiary);
+      font-size: 14px;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .spinner.dark {
+      border-color: rgba(0,0,0,0.1);
+      border-top-color: var(--text-primary);
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .slide-in { animation: slideIn 0.3s ease both; }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 520px) {
+      body { padding: 24px 14px 60px; }
+      .card { padding: 20px; }
+      .action-row { grid-template-columns: 1fr; }
+      .episode-title { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M3 14L7 4L11 11L14 7L16 14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">OpenEnv</div>
+      <div class="logo-sub">Code Quality RL</div>
+    </div>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Idle</span>
+  </div>
+</header>
+
+<div class="main-wrapper">
+
+  <!-- Episode Control -->
+  <div class="card">
+    <div class="episode-hero">
+      <div class="episode-info">
+        <div class="episode-title" id="episodeTitle">Start a New Episode</div>
+        <div class="episode-subtitle" id="episodeSubtitle">Reset the environment to receive a buggy code challenge.</div>
+      </div>
+      <div class="difficulty-badge" id="difficultyBadge">—</div>
+    </div>
+
+    <button class="btn-start" id="btnReset" onclick="resetEpisode()">
+      <div class="spinner dark" id="resetSpinner"></div>
+      <svg id="resetIcon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M8 1L10.5 3.5L8 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Start Episode
+    </button>
+  </div>
+
+  <!-- Buggy Code -->
+  <div class="card">
+    <div class="section-label">Buggy Code</div>
+    <div class="code-block">
+      <div class="code-toolbar">
+        <div class="code-dots">
+          <span class="dot-red"></span>
+          <span class="dot-yellow"></span>
+          <span class="dot-green"></span>
+        </div>
+        <span class="code-lang">python</span>
+      </div>
+      <div class="code-display" id="codeDisplay"></div>
+    </div>
+
+    <div style="margin-top: 14px;">
+      <div class="section-label">Error Hint</div>
+      <div class="hint-box" id="hintBox">No hint yet — start an episode first.</div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card">
+    <div class="section-label">Actions</div>
+    <div class="action-row" style="margin-bottom: 14px;">
+      <button class="btn-action" id="btnIdentify" onclick="submitAction('identify_bug')" disabled>
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M7 9.5V11.5M7 4V5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M10.5 11L13 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        Identify Bug
+      </button>
+      <button class="btn-action primary" id="btnFix" onclick="submitAction('suggest_fix')" disabled>
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <path d="M2.5 12.5L6 9M9 6L12.5 2.5M6 9L9 6" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="11" cy="4" r="2.5" stroke="white" stroke-width="1.5"/>
+        </svg>
+        Suggest Fix
+      </button>
+    </div>
+
+    <div class="section-label">Code Patch</div>
+    <textarea
+      class="patch-textarea"
+      id="patchInput"
+      placeholder="Paste your corrected code here before submitting a fix…"
+    ></textarea>
+
+    <div style="display:flex; justify-content:flex-end; margin-top: 10px;">
+      <div class="spinner dark" id="actionSpinner" style="display:none; margin-right: 8px; margin-top: 2px;"></div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="card" id="resultCard">
+    <div class="section-label">Result</div>
+    <div class="empty-state" id="resultEmpty">
+      No result yet. Submit an action to see feedback.
+    </div>
+    <div class="result-panel" id="resultPanel">
+      <div class="reward-row">
+        <div class="reward-value" id="rewardValue">0.0</div>
+        <div>
+          <div style="font-size:14px; font-weight:600; color: var(--text-primary); margin-bottom:2px;">Reward</div>
+          <div class="reward-label">This step</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="feedback-box" id="feedbackBox"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = 'http://127.0.0.1:8000';
+
+  function setStatus(state) {
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    dot.className = 'status-dot';
+    if (state === 'active')  { dot.classList.add('active');  text.textContent = 'Active'; }
+    if (state === 'loading') { dot.classList.add('loading'); text.textContent = 'Loading…'; }
+    if (state === 'idle')    { text.textContent = 'Idle'; }
+  }
+
+  function setLoading(btn, spinner, icon, on) {
+    if (btn)     btn.disabled = on;
+    if (spinner) spinner.style.display = on ? 'block' : 'none';
+    if (icon)    icon.style.display    = on ? 'none'  : 'block';
+  }
+
+  function applyDifficulty(level) {
+    const badge = document.getElementById('difficultyBadge');
+    badge.textContent = level || '—';
+    badge.className   = 'difficulty-badge ' + (level || '').toLowerCase();
+  }
+
+  function renderCode(code) {
+    const el = document.getElementById('codeDisplay');
+    el.textContent = code || '';
+  }
+
+  function renderHint(hint) {
+    const el = document.getElementById('hintBox');
+    if (hint) {
+      el.textContent = hint;
+      el.classList.add('populated');
+    } else {
+      el.textContent = 'No hint yet — start an episode first.';
+      el.classList.remove('populated');
+    }
+  }
+
+  function renderResult(reward, feedback, isSuccess) {
+    document.getElementById('resultEmpty').style.display = 'none';
+    const panel = document.getElementById('resultPanel');
+    panel.classList.add('visible', 'slide-in');
+
+    const val = document.getElementById('rewardValue');
+    val.textContent = (reward >= 0 ? '+' : '') + Number(reward).toFixed(2);
+    val.className   = 'reward-value ' + (reward > 0 ? 'positive' : reward < 0 ? 'negative' : 'neutral');
+
+    const fb = document.getElementById('feedbackBox');
+    fb.textContent = feedback || '';
+    fb.className   = 'feedback-box ' + (isSuccess === true ? 'success' : isSuccess === false ? 'error' : '');
+  }
+
+  async function resetEpisode() {
+    const btn     = document.getElementById('btnReset');
+    const spinner = document.getElementById('resetSpinner');
+    const icon    = document.getElementById('resetIcon');
+
+    setLoading(btn, spinner, icon, true);
+    setStatus('loading');
+
+    try {
+      const res  = await fetch(`${API}/reset`, { method: 'POST' });
+      const data = await res.json();
+
+      renderCode(data.buggy_code || data.code || '');
+      renderHint(data.error_hint || data.hint || '');
+      applyDifficulty(data.difficulty || data.level || '');
+
+      document.getElementById('episodeTitle').textContent    = 'Episode Running';
+      document.getElementById('episodeSubtitle').textContent = 'Analyse the buggy code and choose your action below.';
+
+      document.getElementById('btnIdentify').disabled = false;
+      document.getElementById('btnFix').disabled      = false;
+
+      // Reset result panel
+      document.getElementById('resultEmpty').style.display = 'block';
+      const panel = document.getElementById('resultPanel');
+      panel.classList.remove('visible', 'slide-in');
+
+      setStatus('active');
+    } catch (err) {
+      console.error(err);
+      document.getElementById('episodeSubtitle').textContent = '⚠ Could not connect to backend at ' + API;
+      setStatus('idle');
+    } finally {
+      setLoading(btn, spinner, icon, false);
+    }
+  }
+
+  async function submitAction(actionType) {
+    const btnId  = actionType === 'identify_bug' ? 'btnIdentify' : 'btnFix';
+    const btn    = document.getElementById(btnId);
+    const spinner = document.getElementById('actionSpinner');
+
+    btn.disabled       = true;
+    spinner.style.display = 'block';
+    setStatus('loading');
+
+    const patch = document.getElementById('patchInput').value.trim();
+    const body  = { action_type: actionType };
+    if (patch) body.code_patch = patch;
+
+    try {
+      const res  = await fetch(`${API}/step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      const reward   = data.reward ?? 0;
+      const feedback = data.feedback || data.message || '';
+      const success  = data.done === true ? true : reward > 0 ? true : reward < 0 ? false : null;
+
+      renderResult(reward, feedback, success);
+
+      if (data.state) {
+        if (data.state.buggy_code || data.state.code) renderCode(data.state.buggy_code || data.state.code);
+        if (data.state.error_hint || data.state.hint)  renderHint(data.state.error_hint || data.state.hint);
+        if (data.state.difficulty || data.state.level) applyDifficulty(data.state.difficulty || data.state.level);
+      }
+
+      setStatus('active');
+    } catch (err) {
+      console.error(err);
+      renderResult(0, '⚠ Request failed. Make sure the backend is running at ' + API, false);
+      setStatus('active');
+    } finally {
+      btn.disabled          = false;
+      spinner.style.display = 'none';
+    }
+  }
+</script>
+</body>
+</html>
