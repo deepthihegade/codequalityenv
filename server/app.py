@@ -1,12 +1,21 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import uvicorn
+
 from environment import Environment
 from models import Action
-import json
 
 app = FastAPI()
 env = Environment()
 
-@app.post("/reset")
+app.mount("/static", StaticFiles(directory="server"), name="static")
+
+@app.get("/")
+def serve_ui():
+    return FileResponse("server/index.html")
+
+@app.post("/openenv/reset")
 def reset():
     result = env.reset()
     return {
@@ -20,7 +29,7 @@ def reset():
         "feedback": result.feedback
     }
 
-@app.post("/step")
+@app.post("/openenv/step")
 def step(action: Action):
     result = env.step(action)
     return {
@@ -34,11 +43,19 @@ def step(action: Action):
         "feedback": result.feedback
     }
 
-@app.get("/state")
-def state():
+@app.get("/openenv/state")
+def get_state():
     s = env.state
     return {
         "episode_id": s.episode_id,
         "step_count": s.step_count,
         "current_task": s.current_task
     }
+
+def main():
+    uvicorn.run("app:app", host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()
+
+
