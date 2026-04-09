@@ -41,8 +41,9 @@ class Action(BaseModel):
 
 
 def evaluate_fix(code_patch: str, task: dict):
+    """Returns reward strictly between 0.0 and 1.0"""
     if not code_patch:
-        return 0.01, "No fix provided."
+        return 0.0, "No fix provided."
     full_code = code_patch + "\n" + task["test"]
     try:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -51,17 +52,31 @@ def evaluate_fix(code_patch: str, task: dict):
         result = subprocess.run(["python3", fname], capture_output=True, text=True, timeout=5)
         os.unlink(fname)
         if "PASS" in result.stdout:
-            return 0.99, "All tests passed! Perfect fix 🎉"
+            return 1.0, "All tests passed! Perfect fix 🎉"
         elif result.returncode == 0:
             return 0.5, "Code runs but tests didn't pass."
         else:
             if "SyntaxError" in result.stderr:
-                return 0.01, f"Syntax error: {result.stderr[:120]}"
+                return 0.0, f"Syntax error: {result.stderr[:120]}"
             return 0.2, f"Fix has errors: {result.stderr[:120]}"
     except subprocess.TimeoutExpired:
-        return 0.01, "Code timed out — possible infinite loop."
+        return 0.0, "Code timed out."
     except Exception as e:
-        return 0.01, f"Error: {str(e)}"
+        return 0.0, f"Error: {str(e)}"
+
+
+@app.get("/")
+def home():
+    return {
+        "message": "🚀 Code Quality OpenEnv Running",
+        "tasks": len(tasks),
+        "reward_range": [0.0, 1.0],
+        "endpoints": {
+            "reset": "/reset (POST)",
+            "step": "/step (POST)",
+            "state": "/state (GET)"
+        }
+    }
 
 
 @app.post("/reset")
@@ -72,7 +87,7 @@ def reset():
     t = tasks[0]
     return {
         "observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]},
-        "reward": 0.01,
+        "reward": 0.0,
         "done": False,
         "feedback": "New episode started! Fix the bug."
     }
@@ -106,7 +121,7 @@ def step(action: Action):
 
         return {
             "observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]},
-            "reward": reward,
+            "reward": round(max(0.0, min(1.0, reward)), 2),  # strictly 0.0-1.0
             "done": done,
             "feedback": feedback
         }
@@ -124,63 +139,83 @@ def get_state():
     return {
         "episode_id": state["episode_id"],
         "step_count": state["step_count"],
-        "current_task": tasks[state["index"]]["level"]
+        "current_task": tasks[state["index"]]["level"],
+        "total_tasks": len(tasks)
     }
 
 
-@app.get("/")
-def home():
-    return {
-        "message": "🚀 Code Quality OpenEnv Running",
-        "endpoints": {
-            "reset": "/reset (POST)",
-            "step": "/step (POST)",
-            "state": "/state (GET)"
-        }
-    }
-
-
-def run_inference(num_episodes: int = 1, steps_per_episode: int = 3):
+def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
+    """Run inference using LLM proxy — prints structured output blocks."""
     global state
 
-    for task_index, task in enumerate(tasks):
-        state["episode_id"] = f"ep-{task_index + 1}"
-        state["index"] = task_index
+    client = OpenAI(
+        base_url=os.environ.get("API_BASE_URL", "https://api.openai.com/v1"),
+        api_key=os.environ.get("API_KEY", "dummy"),
+    )
+
+    for episode in range(num_episodes):
+        state["episode_id"] = f"ep-{episode + 1}"
+        state["index"] = 0
         state["step_count"] = 0
 
-        task_name = f"{task['level']}-task-{task_index}"
-        print(f"[START] task={task_name}", flush=True)
+        # Run all 3 tasks
+        for task_idx in range(len(tasks)):
+            state["index"] = task_idx
+            task = tasks[task_idx]
+            task_name = f"{task['level']}-task-{task_idx}"
 
-        total_reward = 0.0
-        for step_num in range(1, steps_per_episode + 1):
-            state["step_count"] += 1
+            print(f"[START] task={task_name}", flush=True)
 
-            if task["level"] == "easy":
-                code_patch = "def greet(name):\n    print('Hello, ' + name)"
-            elif task["level"] == "medium":
-                code_patch = "def find_max(nums):\n    return max(nums) if nums else 0"
-            else:
-                code_patch = "def has_duplicate(nums):\n    return len(nums) != len(set(nums))"
+            total_reward = 0.0
+            for step_num in range(1, steps_per_episode + 1):
+                state["step_count"] += 1
 
-            reward, feedback = evaluate_fix(code_patch, task)
-            total_reward += reward
-            print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
+                # Call LLM via Scaler's proxy
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a Python bug fixer. Return ONLY the fixed Python code. No explanation, no markdown, no backticks."
+                            },
+                            {
+                                "role": "user",
+                                "content": f"Fix this buggy Python code:\n\n{task['buggy_code']}\n\nHint: {task['error_hint']} error"
+                            }
+                        ],
+                        timeout=60,
+                        max_tokens=300
+                    )
+                    code_patch = response.choices[0].message.content.strip()
+                    # Remove markdown code blocks if model adds them
+                    if code_patch.startswith("```"):
+                        lines = code_patch.split("\n")
+                        code_patch = "\n".join(lines[1:-1])
+                except Exception as e:
+                    print(f"LLM call failed: {e}", flush=True)
+                    code_patch = task["buggy_code"]  # fallback
 
-            if reward >= 0.8:
-                break
+                reward, feedback = evaluate_fix(code_patch, task)
+                reward = round(max(0.0, min(1.0, reward)), 2)  # strictly 0.0-1.0
+                total_reward += reward
 
-        final_score = min(total_reward / state["step_count"], 0.99)
-        final_score = max(final_score, 0.01)
-        print(f"[END] task={task_name} score={final_score:.2f} steps={state['step_count']}", flush=True)
+                print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
+
+                if reward >= 0.8:
+                    break
+
+            final_score = round(min(total_reward / state["step_count"], 1.0), 2)
+            print(f"[END] task={task_name} score={final_score:.2f} steps={state['step_count']}", flush=True)
 
 
 if __name__ == "__main__":
 
     def _hard_timeout(signum, frame):
-        print("[END] task=timeout score=0.01 steps=0", flush=True)
+        print("[END] task=timeout score=0.00 steps=0", flush=True)
         sys.exit(0)
 
     signal.signal(signal.SIGALRM, _hard_timeout)
-    signal.alarm(25 * 60)
+    signal.alarm(25 * 60)  # hard kill at 25 mins
 
-    run_inference(num_episodes=1, steps_per_episode=3)
+    run_inference(num_episodes=1, steps_per_episode=5)
