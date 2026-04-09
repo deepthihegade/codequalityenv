@@ -41,9 +41,9 @@ class Action(BaseModel):
 
 
 def evaluate_fix(code_patch: str, task: dict):
-    """Returns reward strictly between 0.0 and 1.0"""
+    """Returns reward STRICTLY between 0 and 1 (0.01 to 0.99)"""
     if not code_patch:
-        return 0.0, "No fix provided."
+        return 0.01, "No fix provided."
     full_code = code_patch + "\n" + task["test"]
     try:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -52,17 +52,17 @@ def evaluate_fix(code_patch: str, task: dict):
         result = subprocess.run(["python3", fname], capture_output=True, text=True, timeout=5)
         os.unlink(fname)
         if "PASS" in result.stdout:
-            return 1.0, "All tests passed! Perfect fix 🎉"
+            return 0.99, "All tests passed! Perfect fix 🎉"
         elif result.returncode == 0:
-            return 0.5, "Code runs but tests didn't pass."
+            return 0.50, "Code runs but tests didn't pass."
         else:
             if "SyntaxError" in result.stderr:
-                return 0.0, f"Syntax error: {result.stderr[:120]}"
-            return 0.2, f"Fix has errors: {result.stderr[:120]}"
+                return 0.01, f"Syntax error: {result.stderr[:120]}"
+            return 0.20, f"Fix has errors: {result.stderr[:120]}"
     except subprocess.TimeoutExpired:
-        return 0.0, "Code timed out."
+        return 0.01, "Code timed out."
     except Exception as e:
-        return 0.0, f"Error: {str(e)}"
+        return 0.01, f"Error: {str(e)}"
 
 
 @app.get("/")
@@ -121,7 +121,7 @@ def step(action: Action):
 
         return {
             "observation": {"buggy_code": t["buggy_code"], "task_level": t["level"], "error_hint": t["error_hint"]},
-            "reward": round(max(0.0, min(1.0, reward)), 2),  # strictly 0.0-1.0
+            "reward": round(max(0.01, min(0.99, reward)), 2), 
             "done": done,
             "feedback": feedback
         }
@@ -197,7 +197,7 @@ def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
                     code_patch = task["buggy_code"]  # fallback
 
                 reward, feedback = evaluate_fix(code_patch, task)
-                reward = round(max(0.0, min(1.0, reward)), 2)  # strictly 0.0-1.0
+                reward = round(max(0.01, min(0.99, reward)), 2)  
                 total_reward += reward
 
                 print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
