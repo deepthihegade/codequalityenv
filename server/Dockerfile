@@ -1,5 +1,6 @@
-FROM python:3.11
+FROM python:3.11-slim
 WORKDIR /app
 COPY . .
-RUN pip install fastapi uvicorn pydantic openai "openenv-core[core]>=0.2.1"
-CMD ["uvicorn", "inference:app", "--host", "0.0.0.0", "--port", "7860"]
+RUN pip install fastapi uvicorn openai pydantic
+EXPOSE 8000
+CMD ["uvicorn", "inference:app", "--host", "0.0.0.0", "--port", "8000"]
