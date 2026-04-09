@@ -12,3 +12,4 @@ tasks:
 observation_space: buggy Python code snippet with error hint
 action_space: identify_bug or suggest_fix
 reward_range: [0.0, 1.0]
+min_tasks: 3
