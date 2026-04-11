@@ -1,54 +1,51 @@
-CodeQualityEnv 
+CodeQualityEnv
 
-An RL environment where an AI agent learns to review and fix buggy Python code.
+An RL environment where an AI agent acts as a Python code reviewer, identifying and fixing real-world bugs.
 
-Built with OpenEnv by team Neurobytes.
+Built with OpenEnv by team **Neurobytes**.
 
-What It Does?
-The agent is given buggy Python code and must:
-1. Identify where the bug is
-2. Suggest a corrected fix
+Environment Overview
 
-It gets scored from 0.0 to 1.0 based on how good the fix will be.
+| Field | Value |
+|---|---|
+| Observation | Buggy Python code + error hint + task level |
+| Actions | `identify_bug`, `suggest_fix` |
+| Reward Range | (0, 1) exclusive |
+| Tasks | 3 (easy → medium → hard) |
 
-3.Tasks
- Level 
- Type
- 
-Description:
-Easy  Syntax  Fix a missing colon.
-Medium  Logic  Fix wrong initial value in loop.
-Hard  Performance  Optimize O(n²) to O(n).
+Tasks
 
-Observation Space:
- Buggy Python code snippet
- Error hint (syntax / logic /            performance)
- Task level (easy / medium / hard)
+| Level | Bug Type | Description |
+|---|---|---|
+| Easy | Missing return | Function computes but never returns value |
+| Medium | Off-by-one | Binary search with wrong initial boundary |
+| Hard | Closure bug | Lambda captures loop variable by reference |
 
-Action Space:
- identify_bug(line_number) → partial     reward 0.3
- suggest_fix(code_patch) → full reward   up to 1.0
+Reward Function
 
-Reward Function:
- Outcome 
- Reward 
- All tests pass = 1.0 
- Code runs, tests fail = 0.5 
- Bug identified correctly = 0.3 
- Fix has errors = 0.2 
- Broken/no fix = 0.0 
+| Outcome | Reward |
+|---|---|
+| All tests pass | 0.99 |
+| Code runs, tests fail | 0.50 |
+| Runtime error | 0.15–0.20 |
+| Syntax error / no fix | 0.01 |
+| Bug identified (partial) | 0.30 |
 
-How To Run:
- git clone:
-https://github.com/deepthihegade/codequalityenv
- cd codequalityenv
- pip install fastapi uvicorn
- python3 baseline.py
+API Endpoints
 
+`POST /reset` — Start new episode
+`POST /step` — Submit action
+`GET /state` — Current episode state
 
-Expected Output
- Task: easy → Reward:1.0 
- Task: medium → Reward:1.0 
- Task: hard → Reward:1.0 
+Setup
 
-Team Neurobyte
+```bash
+git clone https://github.com/deepthihegade/codequalityenv
+cd codequalityenv
+pip install fastapi uvicorn openai pydantic
+python inference.py
+```
+
+HF Space
+
+https://huggingface.co/spaces/MeghanaK4/NEUROBYTRES
