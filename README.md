@@ -28,11 +28,9 @@ The agent has 5 actions available — designed to reward thoughtful, systematic 
 
 | Action | Required Fields | Reward |
 |--------|----------|-----------|
-| `inspect_code` | — | +0.15 first time, +0.05 repeat |
 | `identify_bug` | `line_number: int` | +0.40 correct, +0.10 wrong |
 | `explain_bug` | `explanation: str` | +0.30 to +0.40 |
 | `suggest_fix` | `code_patch: str` | +0.05 to +0.99 based on tests |
-| `run_tests` | — | 0.5× of last fix reward |
 
 Workflow bonus: Agent gets +0.03 extra on `suggest_fix` for each completed prior step (inspect → identify → explain). Maximum bonus: +0.09.
 
