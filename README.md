@@ -78,6 +78,8 @@ HF Space
 https://huggingface.co/spaces/MeghanaK4/NEUROBYTRES
 
 Future Scope:
-Add automated debugging tools
-Improve logging and monitoring
-Support multiple environments
+
+1.Add automated debugging tools
+2.Improve logging and monitoring
+3.Support multiple environments.
+
