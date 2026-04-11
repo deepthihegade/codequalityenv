@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import subprocess
 import tempfile
 import os
@@ -10,118 +10,219 @@ import sys
 
 app = FastAPI()
 
-
 TASKS = [
     {
         "level": "easy",
-        "title": "Missing Return Statement",
-        "description": "A function computes a value but never returns it.",
-        "buggy_code": (
-            "def calculate_discount(price, percent):\n"
-            "    discount = price * (percent / 100)\n"
-            "    final_price = price - discount\n"
-            "    # Bug: missing return\n"
+        "title": "Wrong Loss Reduction — Sum Instead of Mean",
+        "description": (
+            "A training loop computes MSE loss using .sum() instead of .mean(). "
+            "This makes the loss scale with batch size, so doubling the batch "
+            "doubles the loss and breaks learning rate tuning."
         ),
-        "error_hint": "The function calculates final_price but never returns it. Callers always get None.",
-        "error_type": "logic",
-        "line_hint": 3,
+        "buggy_code": (
+            "import torch\n"
+            "\n"
+            "def compute_loss(predictions, targets):\n"
+            "    \"\"\"Compute MSE loss between predictions and targets.\"\"\"\n"
+            "    diff = predictions - targets\n"
+            "    return (diff ** 2).sum()  # Bug: should be .mean() not .sum()\n"
+        ),
+        "error_hint": (
+            "MSE = mean of squared errors. Using .sum() makes loss proportional to batch size — "
+            "a batch of 100 gives 100x the loss of a batch of 1. "
+            "Replace .sum() with .mean()."
+        ),
+        "error_type": "wrong-reduction",
+        "line_hint": 6,
         "test": (
-            "result = calculate_discount(200, 10)\n"
-            "assert result == 180.0, f'Expected 180.0 got {result}'\n"
-            "result2 = calculate_discount(50, 50)\n"
-            "assert result2 == 25.0, f'Expected 25.0 got {result2}'\n"
+            "import torch\n"
+            "preds = torch.tensor([1.0, 2.0, 3.0])\n"
+            "tgts  = torch.tensor([1.5, 2.5, 3.5])\n"
+            "loss = compute_loss(preds, tgts)\n"
+            "assert abs(loss.item() - 0.25) < 1e-5, f'Expected MSE=0.25 got {loss.item()}'\n"
+            "preds2 = torch.tensor([0.0, 0.0])\n"
+            "tgts2  = torch.tensor([1.0, 1.0])\n"
+            "loss2 = compute_loss(preds2, tgts2)\n"
+            "assert abs(loss2.item() - 1.0) < 1e-5, f'Expected MSE=1.0 got {loss2.item()}'\n"
             "print('PASS')\n"
         ),
     },
     {
         "level": "medium",
-        "title": "Off-by-One in Binary Search",
-        "description": "Binary search crashes on last element due to wrong boundary.",
-        "buggy_code": (
-            "def binary_search(arr, target):\n"
-            "    left, right = 0, len(arr)  # Bug: should be len(arr)-1\n"
-            "    while left <= right:\n"
-            "        mid = (left + right) // 2\n"
-            "        if arr[mid] == target:\n"
-            "            return mid\n"
-            "        elif arr[mid] < target:\n"
-            "            left = mid + 1\n"
-            "        else:\n"
-            "            right = mid - 1\n"
-            "    return -1\n"
+        "title": "Missing optimizer.zero_grad() Causes Gradient Accumulation",
+        "description": (
+            "A PyTorch training loop is missing optimizer.zero_grad() before loss.backward(). "
+            "Gradients accumulate across steps, causing exploding gradient norms "
+            "and unstable or diverging training."
         ),
-        "error_hint": "right boundary is len(arr) but arrays are zero-indexed so max index is len(arr)-1. This causes IndexError.",
-        "error_type": "off-by-one",
-        "line_hint": 2,
+        "buggy_code": (
+            "import torch\n"
+            "import torch.nn as nn\n"
+            "\n"
+            "def train_one_epoch(model, inputs, targets, optimizer, criterion, steps=3):\n"
+            "    losses = []\n"
+            "    grad_norms = []\n"
+            "    for step in range(steps):\n"
+            "        outputs = model(inputs)\n"
+            "        loss = criterion(outputs, targets)\n"
+            "        # Bug: missing optimizer.zero_grad() here!\n"
+            "        loss.backward()\n"
+            "        gn = sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)\n"
+            "        grad_norms.append(gn)\n"
+            "        optimizer.step()\n"
+            "        losses.append(loss.item())\n"
+            "    return losses, grad_norms\n"
+        ),
+        "error_hint": (
+            "In PyTorch, gradients accumulate by default. "
+            "Call optimizer.zero_grad() at the START of every training step, "
+            "before loss.backward(). Without it, each step adds to previous gradients "
+            "causing the gradient norm to grow each step."
+        ),
+        "error_type": "missing-zero-grad",
+        "line_hint": 10,
         "test": (
-            "arr = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]\n"
-            "assert binary_search(arr, 23) == 5, f'Expected 5 got {binary_search(arr, 23)}'\n"
-            "assert binary_search(arr, 2) == 0\n"
-            "assert binary_search(arr, 91) == 9\n"
-            "assert binary_search(arr, 100) == -1\n"
+            "import torch\n"
+            "import torch.nn as nn\n"
+            "torch.manual_seed(42)\n"
+            "model = nn.Linear(2, 1)\n"
+            "optimizer = torch.optim.SGD(model.parameters(), lr=0.01)\n"
+            "criterion = nn.MSELoss()\n"
+            "inputs  = torch.tensor([[1.0, 2.0], [3.0, 4.0]])\n"
+            "targets = torch.tensor([[1.0], [2.0]])\n"
+            "losses, grad_norms = train_one_epoch(model, inputs, targets, optimizer, criterion, steps=3)\n"
+            "ratio = grad_norms[1] / (grad_norms[0] + 1e-8)\n"
+            "assert ratio < 1.5, (\n"
+            "    f'Gradient norms exploding (ratio={ratio:.2f}) — '\n"
+            "    f'missing zero_grad causes accumulation! norms={grad_norms}'\n"
+            ")\n"
+            "assert len(losses) == 3\n"
             "print('PASS')\n"
         ),
     },
     {
         "level": "hard",
-        "title": "Closure Variable Capture Bug",
-        "description": "Lambda inside loop captures loop variable by reference, not by value.",
-        "buggy_code": (
-            "def make_multipliers(factors):\n"
-            "    funcs = []\n"
-            "    for f in factors:\n"
-            "        funcs.append(lambda x: x * f)  # Bug: f captured by ref\n"
-            "    return funcs\n"
+        "title": "Tensor dtype Mismatch Crashes Forward Pass",
+        "description": (
+            "A model is cast to float64 (.double()) but the input tensor stays float32. "
+            "PyTorch raises a RuntimeError when tensors of different dtypes are used in the same operation. "
+            "This is the CPU/GPU analogue — a dtype mismatch that's easy to miss."
         ),
-        "error_hint": "All lambdas share the same 'f' variable. By the time they're called, f is the last value in factors. Use a default argument to capture by value.",
-        "error_type": "closure",
-        "line_hint": 4,
+        "buggy_code": (
+            "import torch\n"
+            "import torch.nn as nn\n"
+            "\n"
+            "def run_forward(model, data):\n"
+            "    \"\"\"Run a forward pass with the model.\"\"\"\n"
+            "    model = model.double()  # Bug: changes model to float64\n"
+            "    # data is still float32 — dtype mismatch will crash!\n"
+            "    output = model(data)\n"
+            "    return output\n"
+        ),
+        "error_hint": (
+            "When you call model.double(), all model parameters become float64. "
+            "But if input data is float32, PyTorch raises: "
+            "'RuntimeError: expected scalar type Double but found Float'. "
+            "Fix: cast input to match — data = data.double() — or keep both float32."
+        ),
+        "error_type": "dtype-mismatch",
+        "line_hint": 6,
         "test": (
-            "multipliers = make_multipliers([2, 3, 5])\n"
-            "assert multipliers[0](10) == 20, f'Expected 20 got {multipliers[0](10)}'\n"
-            "assert multipliers[1](10) == 30, f'Expected 30 got {multipliers[1](10)}'\n"
-            "assert multipliers[2](10) == 50, f'Expected 50 got {multipliers[2](10)}'\n"
-            "print('PASS')\n"
+            "import torch\n"
+            "import torch.nn as nn\n"
+            "torch.manual_seed(0)\n"
+            "model = nn.Linear(3, 2)\n"
+            "data = torch.randn(4, 3)  # float32\n"
+            "try:\n"
+            "    out = run_forward(model, data)\n"
+            "    assert out.shape == (4, 2), f'Expected shape (4,2) got {out.shape}'\n"
+            "    assert out.dtype == torch.float64, f'Expected float64 output got {out.dtype}'\n"
+            "    print('PASS')\n"
+            "except RuntimeError as e:\n"
+            "    raise AssertionError(f'dtype mismatch not fixed: {e}')\n"
         ),
     },
     {
         "level": "expert",
-        "title": "Mutable Default Argument",
-        "description": "Using a mutable list as default argument causes state to persist across calls.",
-        "buggy_code": (
-            "def append_to_list(item, target=[]):  # Bug: mutable default\n"
-            "    target.append(item)\n"
-            "    return target\n"
+        "title": "detach() Blocks Gradient Flow to Weight Network",
+        "description": (
+            "A learnable loss weighting network uses .detach() on its output before combining losses. "
+            "This stops gradients from flowing back to the weight network, "
+            "so it never learns — silently producing wrong results with no error."
         ),
-        "error_hint": "Default arguments are evaluated ONCE when the function is defined, not each time it's called. The same list object is reused across all calls.",
-        "error_type": "mutable-default",
-        "line_hint": 1,
+        "buggy_code": (
+            "import torch\n"
+            "\n"
+            "def compute_weighted_loss(loss_a, loss_b, weight):\n"
+            "    \"\"\"Combine two losses with a learnable scalar weight.\"\"\"\n"
+            "    w = weight.detach()  # Bug: detach() kills gradient flow!\n"
+            "    return w * loss_a + (1 - w) * loss_b\n"
+        ),
+        "error_hint": (
+            ".detach() creates a new tensor that shares data but is excluded from the computation graph. "
+            "Any gradients computed through the output will NOT flow back to `weight`. "
+            "Remove .detach() so the weight network receives gradient updates."
+        ),
+        "error_type": "detach-kills-gradient",
+        "line_hint": 5,
         "test": (
-            "r1 = append_to_list('a')\n"
-            "r2 = append_to_list('b')\n"
-            "assert r1 == ['a'], f'Expected [\"a\"] got {r1}'\n"
-            "assert r2 == ['b'], f'Expected [\"b\"] got {r2}'\n"
+            "import torch\n"
+            "weight = torch.tensor(0.6, requires_grad=True)\n"
+            "loss_a = torch.tensor(2.0)\n"
+            "loss_b = torch.tensor(0.5)\n"
+            "combined = compute_weighted_loss(loss_a, loss_b, weight)\n"
+            "combined.backward()\n"
+            "assert weight.grad is not None, 'Gradient did not reach weight — detach() bug!'\n"
+            "# d/dw (w*2.0 + (1-w)*0.5) = 2.0 - 0.5 = 1.5\n"
+            "assert abs(weight.grad.item() - 1.5) < 1e-4, f'Expected grad=1.5 got {weight.grad.item()}'\n"
             "print('PASS')\n"
         ),
     },
     {
         "level": "master",
-        "title": "Silent Exception Swallowing",
-        "description": "A broad except clause hides real errors and returns wrong fallback.",
-        "buggy_code": (
-            "def safe_divide(a, b):\n"
-            "    try:\n"
-            "        return a / b\n"
-            "    except:  # Bug: catches everything including KeyboardInterrupt\n"
-            "        return 0  # Bug: returns 0 instead of None or raising\n"
+        "title": "Wrong Batch Normalization Axis (dim=1 instead of dim=0)",
+        "description": (
+            "A custom batch normalization normalizes across features per sample (dim=1) "
+            "instead of across batch samples per feature (dim=0). "
+            "This is instance normalization, not batch normalization — "
+            "a subtle but critical mistake that produces wrong statistics."
         ),
-        "error_hint": "Bare except catches ALL exceptions including SystemExit and KeyboardInterrupt. Use 'except ZeroDivisionError' specifically and return None instead of 0 to distinguish from a valid result.",
-        "error_type": "exception-handling",
-        "line_hint": 4,
+        "buggy_code": (
+            "import torch\n"
+            "\n"
+            "def batch_normalize(batch):\n"
+            "    \"\"\"Apply batch normalization: normalize each feature across the batch.\"\"\"\n"
+            "    mean = batch.mean(dim=1, keepdim=True)  # Bug: dim=1 normalizes per sample\n"
+            "    std  = batch.std(dim=1, keepdim=True) + 1e-8\n"
+            "    return (batch - mean) / std\n"
+        ),
+        "error_hint": (
+            "Batch Normalization computes mean and std FOR EACH FEATURE across all samples. "
+            "That means the reduction axis is dim=0 (across the batch). "
+            "dim=1 reduces across features within a sample — that is Instance Normalization, not Batch Norm. "
+            "Fix: change dim=1 to dim=0 in both .mean() and .std()."
+        ),
+        "error_type": "wrong-norm-axis",
+        "line_hint": 5,
         "test": (
-            "assert safe_divide(10, 2) == 5.0\n"
-            "assert safe_divide(10, 0) is None, f'Expected None got {safe_divide(10, 0)}'\n"
-            "assert safe_divide(7, 2) == 3.5\n"
+            "import torch\n"
+            "batch = torch.tensor([\n"
+            "    [1.0, 1.0],\n"
+            "    [1.0, 2.0],\n"
+            "    [1.0, 3.0],\n"
+            "    [1.0, 4.0],\n"
+            "])\n"
+            "result = batch_normalize(batch)\n"
+            "# Feature 0 is constant across batch -> batch norm -> all zeros\n"
+            "assert result[:, 0].abs().max().item() < 0.01, (\n"
+            "    f'Feature 0 should be ~0 after batch norm, got {result[:, 0]}'\n"
+            ")\n"
+            "# Feature 1 batch mean should be ~0\n"
+            "feat1_mean = result[:, 1].mean().item()\n"
+            "assert abs(feat1_mean) < 1e-4, f'Feature 1 batch mean should be ~0, got {feat1_mean}'\n"
+            "# Feature 1 batch std should be ~1\n"
+            "feat1_std = result[:, 1].std().item()\n"
+            "assert abs(feat1_std - 1.0) < 0.1, f'Feature 1 std should be ~1, got {feat1_std}'\n"
             "print('PASS')\n"
         ),
     },
@@ -141,26 +242,20 @@ state = {
 
 
 class Action(BaseModel):
-    action_type: str          
+    action_type: str  # inspect_code | identify_bug | explain_bug | suggest_fix | run_tests
     line_number: Optional[int] = None
     explanation: Optional[str] = None
     code_patch: Optional[str] = None
 
 
-class Observation(BaseModel):
-    buggy_code: str
-    task_level: str
-    task_title: str
-    error_hint: str
-    error_type: str
-    step_count: int
-    inspected: bool
-    identified: bool
-    explained: bool
 
+def clamp(r: float) -> float:
+    """Reward strictly between 0 and 1 — never 0.0 or 1.0."""
+    return round(max(0.01, min(0.99, r)), 2)
 
 
 def evaluate_fix(code_patch: str, task: dict):
+    """Run fix against test cases. Returns (reward, feedback). Uses real torch."""
     if not code_patch or not code_patch.strip():
         return 0.01, "No fix provided."
     full_code = code_patch + "\n" + task["test"]
@@ -170,32 +265,27 @@ def evaluate_fix(code_patch: str, task: dict):
             fname = f.name
         result = subprocess.run(
             ["python3", fname],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=30
         )
         os.unlink(fname)
-
         if "PASS" in result.stdout:
             return 0.99, "All tests passed! Perfect fix 🎉"
         elif result.returncode == 0:
-            return 0.50, "Code runs but tests didn't pass — logic still wrong."
+            return 0.50, "Code runs but tests failed — logic still wrong."
         else:
             if "SyntaxError" in result.stderr:
-                return 0.05, f"Syntax error in fix: {result.stderr[:120]}"
-            if "IndexError" in result.stderr:
-                return 0.10, f"Index error: {result.stderr[:120]}"
+                return 0.05, f"Syntax error: {result.stderr[:150]}"
+            if "AssertionError" in result.stderr:
+                return 0.30, f"Fix runs but assertion failed: {result.stderr[:150]}"
+            if "RuntimeError" in result.stderr:
+                return 0.15, f"PyTorch RuntimeError: {result.stderr[:150]}"
             if "TypeError" in result.stderr:
-                return 0.10, f"Type error: {result.stderr[:120]}"
-            return 0.20, f"Runtime error: {result.stderr[:120]}"
-
+                return 0.10, f"Type error: {result.stderr[:150]}"
+            return 0.20, f"Error: {result.stderr[:150]}"
     except subprocess.TimeoutExpired:
         return 0.01, "Fix timed out — possible infinite loop."
     except Exception as e:
         return 0.01, f"Grader error: {str(e)}"
-
-
-def clamp(r):
-    """Strictly between 0 and 1."""
-    return round(max(0.01, min(0.99, r)), 2)
 
 
 def current_obs():
@@ -204,6 +294,7 @@ def current_obs():
         "buggy_code": t["buggy_code"],
         "task_level": t["level"],
         "task_title": t["title"],
+        "task_description": t["description"],
         "error_hint": t["error_hint"],
         "error_type": t["error_type"],
         "step_count": state["step_count"],
@@ -217,16 +308,25 @@ def current_obs():
 @app.get("/")
 def home():
     return {
-        "message": "🚀 CodeReview OpenEnv — Neurobytes",
-        "version": "2.0.0",
-        "tasks": len(TASKS),
-        "action_space": ["inspect_code", "identify_bug", "explain_bug", "suggest_fix", "run_tests"],
+        "message": "🔬 PyTorch Code Review OpenEnv — Neurobytes",
+        "version": "3.0.0",
+        "theme": "Real PyTorch / ML training bugs",
+        "total_tasks": len(TASKS),
+        "task_levels": [t["level"] for t in TASKS],
+        "task_titles": [t["title"] for t in TASKS],
+        "action_space": [
+            "inspect_code",
+            "identify_bug",
+            "explain_bug",
+            "suggest_fix",
+            "run_tests",
+        ],
         "reward_range": "(0, 1) exclusive",
         "endpoints": {
             "reset": "POST /reset",
-            "step": "POST /step",
-            "state": "GET /state",
-        }
+            "step":  "POST /step",
+            "state": "GET  /state",
+        },
     }
 
 
@@ -241,7 +341,10 @@ def reset():
         "observation": current_obs(),
         "reward": 0.01,
         "done": False,
-        "feedback": "New episode! You are a code reviewer. Inspect, identify, explain, then fix the bug.",
+        "feedback": (
+            "New episode! You are a senior PyTorch engineer reviewing buggy ML training code. "
+            "Recommended workflow: inspect_code → identify_bug → explain_bug → suggest_fix → run_tests."
+        ),
     }
 
 
@@ -257,49 +360,51 @@ def step(action: Action):
         if not state["inspected"]:
             state["inspected"] = True
             reward = 0.15
-            feedback = f"Good — you inspected the code first. Task: '{t['title']}'. Error type: {t['error_type']}."
+            feedback = (
+                f"Code inspected. Task: '{t['title']}'. "
+                f"Error type: {t['error_type']}. "
+                f"{t['description']}"
+            )
         else:
             reward = 0.05
-            feedback = "Already inspected. Move to identify_bug next."
+            feedback = "Already inspected. Use identify_bug next."
 
     elif action.action_type == "identify_bug":
         if action.line_number == t["line_hint"]:
             state["identified"] = True
             reward = 0.40
-            feedback = f"✅ Correct! Bug is on line {action.line_number}. Now explain WHY it's a bug."
+            feedback = (
+                f"✅ Correct! The bug is on line {action.line_number}. "
+                f"Now explain WHY using explain_bug."
+            )
         elif action.line_number is not None:
             reward = 0.10
-            feedback = f"❌ Line {action.line_number} is not the main bug location. Look more carefully."
+            feedback = f"❌ Line {action.line_number} is not the main bug. Look more carefully."
         else:
             reward = 0.05
-            feedback = "Provide a line_number to identify where the bug is."
+            feedback = "Provide line_number to pinpoint the bug."
 
     elif action.action_type == "explain_bug":
         if action.explanation and len(action.explanation.strip()) > 20:
             state["explained"] = True
             bonus = 0.10 if state["identified"] else 0.0
             reward = clamp(0.30 + bonus)
-            feedback = f"Good explanation! Now submit your fix using suggest_fix."
+            feedback = "Good explanation! Now submit your fix using suggest_fix."
         else:
             reward = 0.05
             feedback = "Explanation too short. Describe WHY this is a bug in detail."
 
     elif action.action_type == "suggest_fix":
         raw_reward, feedback = evaluate_fix(action.code_patch, t)
-
-        workflow_bonus = 0.0
-        if state["inspected"]:
-            workflow_bonus += 0.03
-        if state["identified"]:
-            workflow_bonus += 0.03
-        if state["explained"]:
-            workflow_bonus += 0.03
-
+        workflow_bonus = sum([
+            0.03 if state["inspected"] else 0.0,
+            0.03 if state["identified"] else 0.0,
+            0.03 if state["explained"] else 0.0,
+        ])
         reward = clamp(raw_reward + workflow_bonus)
         state["last_patch"] = action.code_patch
 
         if raw_reward >= 0.90:
-            # Move to next task
             if state["index"] < len(TASKS) - 1:
                 state["index"] += 1
                 state.update({
@@ -307,24 +412,26 @@ def step(action: Action):
                     "explained": False, "last_patch": None,
                 })
                 next_t = TASKS[state["index"]]
-                feedback += f" ➡️ Moving to next task: [{next_t['level']}] {next_t['title']}"
+                feedback += f" ➡️ Next: [{next_t['level']}] {next_t['title']}"
             else:
                 done = True
-                feedback += " 🏆 All tasks complete! Outstanding work!"
+                feedback += " 🏆 All 5 PyTorch tasks complete! Outstanding work!"
 
     elif action.action_type == "run_tests":
-        # Agent can check current patch against tests
         if state["last_patch"]:
             raw_reward, test_feedback = evaluate_fix(state["last_patch"], t)
-            reward = clamp(raw_reward * 0.5)  
-            feedback = f"Test run result: {test_feedback}"
+            reward = clamp(raw_reward * 0.5)
+            feedback = f"Test result: {test_feedback}"
         else:
             reward = 0.05
             feedback = "No patch submitted yet. Use suggest_fix first."
 
     else:
         reward = 0.01
-        feedback = "Unknown action. Use: inspect_code, identify_bug, explain_bug, suggest_fix, run_tests."
+        feedback = (
+            "Unknown action. Valid: "
+            "inspect_code | identify_bug | explain_bug | suggest_fix | run_tests"
+        )
 
     return {
         "observation": current_obs(),
@@ -343,11 +450,11 @@ def get_state():
         "current_task": TASKS[state["index"]]["title"],
         "current_level": TASKS[state["index"]]["level"],
         "total_tasks": len(TASKS),
-        "workflow_progress": {
+        "workflow": {
             "inspected": state["inspected"],
             "identified": state["identified"],
             "explained": state["explained"],
-        }
+        },
     }
 
 
@@ -355,7 +462,8 @@ def get_state():
 def run_inference(num_episodes: int = 1, steps_per_episode: int = 6):
     """
     Baseline inference using judges' LLM proxy.
-    Agent follows full workflow: inspect → identify → explain → fix → run_tests
+    Agent reviews 5 real PyTorch bugs following full workflow:
+    inspect → identify → explain → fix → run_tests
     """
     global state
 
@@ -365,35 +473,28 @@ def run_inference(num_episodes: int = 1, steps_per_episode: int = 6):
     )
     model = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
-    SYSTEM_PROMPT = """You are an expert Python code reviewer.
-You will be given a buggy Python function and must review it systematically.
-You have 5 actions available:
-- inspect_code: Study the code carefully first
-- identify_bug: Pinpoint the exact line number with the bug
-- explain_bug: Explain clearly why it is a bug
-- suggest_fix: Submit the corrected Python code
-- run_tests: Run tests against your last submitted fix
-Always follow this workflow: inspect → identify → explain → fix → run_tests.
-When suggesting a fix, return ONLY raw corrected Python code. No markdown, no backticks, no explanation."""
+    SYSTEM_PROMPT = (
+        "You are a senior ML engineer and PyTorch expert performing code review. "
+        "You will be given buggy PyTorch/ML code with real torch tensors and operations. "
+        "When asked to explain: write 2-3 clear technical sentences about WHY the bug is wrong "
+        "and what goes wrong at runtime. "
+        "When asked to fix: return ONLY the complete corrected Python code. "
+        "No markdown, no backticks, no explanation — just raw Python with import statements."
+    )
 
     for episode in range(num_episodes):
-        
-        state.update({
-            "index": 0, "step_count": 0,
-            "episode_id": f"ep-{episode+1}",
-            "inspected": False, "identified": False,
-            "explained": False, "last_patch": None,
-        })
-
         for task_idx in range(len(TASKS)):
-            state["index"] = task_idx
             state.update({
-                "inspected": False, "identified": False,
-                "explained": False, "last_patch": None,
+                "index": task_idx,
                 "step_count": 0,
+                "episode_id": f"ep-{episode+1}",
+                "inspected": False,
+                "identified": False,
+                "explained": False,
+                "last_patch": None,
             })
             task = TASKS[task_idx]
-            task_name = f"{task['level']}-{task_idx}"
+            task_name = f"{task['level']}-task-{task_idx}"
 
             print(f"[START] task={task_name}", flush=True)
 
@@ -401,84 +502,81 @@ When suggesting a fix, return ONLY raw corrected Python code. No markdown, no ba
             steps_taken = 0
 
             workflow = [
-                ("inspect_code", None, None, None),
-                ("identify_bug", task["line_hint"], None, None),
-                ("explain_bug", None, "explain", None),
-                ("suggest_fix", None, None, "fix"),
-                ("run_tests", None, None, None),
-                ("suggest_fix", None, None, "fix"),  
+                {"action_type": "inspect_code"},
+                {"action_type": "identify_bug", "line_number": task["line_hint"]},
+                {"action_type": "explain_bug",  "use_llm": True, "mode": "explain"},
+                {"action_type": "suggest_fix",  "use_llm": True, "mode": "fix"},
+                {"action_type": "run_tests"},
+                {"action_type": "suggest_fix",  "use_llm": True, "mode": "fix"},
             ]
-
-            for step_num, (action_type, line_num, explain_mode, fix_mode) in enumerate(workflow, 1):
+            for step_num, w in enumerate(workflow, 1):
                 if step_num > steps_per_episode:
                     break
 
                 steps_taken += 1
-                state["step_count"] += 1
+                action_payload = {"action_type": w["action_type"]}
 
-                # Build action payload
-                action_payload = {"action_type": action_type}
+                if w.get("line_number"):
+                    action_payload["line_number"] = w["line_number"]
 
-                if action_type == "identify_bug":
-                    action_payload["line_number"] = line_num
-
-                elif action_type in ("explain_bug", "suggest_fix"):
+                if w.get("use_llm"):
                     try:
-                        if action_type == "explain_bug":
+                        if w["mode"] == "explain":
                             user_msg = (
-                                f"Buggy code:\n{task['buggy_code']}\n\n"
-                                f"Hint: {task['error_hint']}\n\n"
-                                f"Explain in 2-3 sentences exactly why this is a bug."
+                                f"Buggy PyTorch code:\n\n{task['buggy_code']}\n\n"
+                                f"Bug hint: {task['error_hint']}\n\n"
+                                f"In 2-3 technical sentences, explain exactly why this is a bug "
+                                f"and what goes wrong at runtime in PyTorch."
                             )
                         else:
                             user_msg = (
-                                f"Buggy code:\n{task['buggy_code']}\n\n"
-                                f"Hint: {task['error_hint']}\n\n"
-                                f"Return ONLY the complete fixed Python function. No markdown. No explanation."
+                                f"Buggy PyTorch code:\n\n{task['buggy_code']}\n\n"
+                                f"Bug hint: {task['error_hint']}\n\n"
+                                f"Return ONLY the complete corrected Python code including all imports. "
+                                f"No markdown, no backticks, no explanation."
                             )
 
                         response = client.chat.completions.create(
                             model=model,
                             messages=[
                                 {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": user_msg}
+                                {"role": "user",   "content": user_msg},
                             ],
                             timeout=60,
-                            max_tokens=400,
+                            max_tokens=500,
                         )
                         content = response.choices[0].message.content.strip()
-
-                       
                         if content.startswith("```"):
-                            lines = content.split("\n")
-                            content = "\n".join(lines[1:-1])
+                            content = "\n".join(content.split("\n")[1:-1])
 
-                        if action_type == "explain_bug":
+                        if w["mode"] == "explain":
                             action_payload["explanation"] = content
                         else:
                             action_payload["code_patch"] = content
 
                     except Exception as e:
                         print(f"LLM call failed: {e}", flush=True)
-                        if action_type == "explain_bug":
+                        if w["mode"] == "explain":
                             action_payload["explanation"] = task["error_hint"]
                         else:
                             action_payload["code_patch"] = task["buggy_code"]
 
-                
-                action_obj = Action(**action_payload)
-                result = step(action_obj)
+                result = step(Action(**action_payload))
                 reward = result["reward"]
                 total_reward += reward
 
                 print(f"[STEP] step={step_num} reward={reward:.2f}", flush=True)
 
-                
-                if result["done"] or (action_type == "suggest_fix" and reward >= 0.90):
+                if result["done"] or (
+                    w["action_type"] == "suggest_fix" and reward >= 0.90
+                ):
                     break
 
             final_score = clamp(total_reward / max(steps_taken, 1))
-            print(f"[END] task={task_name} score={final_score:.2f} steps={steps_taken}", flush=True)
+            print(
+                f"[END] task={task_name} score={final_score:.2f} steps={steps_taken}",
+                flush=True,
+            )
 
 
 
