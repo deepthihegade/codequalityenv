@@ -1,4 +1,4 @@
- CodeReview OpenEnv — Neurobytes
+CodeReview OpenEnv — Neurobytes
 
  -A real-world RL environment where an AI agent acts as a **senior Python code reviewer**.  
  -Built for the Meta PyTorch OpenEnv Hackathon × Scaler School of Technology, Round 1.  
@@ -20,14 +20,6 @@ This mirrors how real engineers review PRs — not just patching blindly, but re
 
 
 
-Tasks (Easy → Master)
-
-| Level | Bug Type | Description |
-|  Easy | Missing Return | Function computes value but never returns it |
-| Medium | Off-by-One | Binary search crashes due to wrong boundary `len(arr)` vs `len(arr)-1` |
-| Hard | Closure Capture | Lambda in loop captures `f` by reference — all funcs use last value |
-| Expert | Mutable Default | `def f(x, lst=[])` — same list reused across all calls |
-| Master | Bare Except | `except:` swallows `SystemExit`, `KeyboardInterrupt` — returns `0` instead of `None` |
 
 
  Action Space
@@ -35,6 +27,7 @@ Tasks (Easy → Master)
 The agent has 5 actions available — designed to reward thoughtful, systematic review:
 
 | Action | Required Fields | Reward |
+|--------|----------|-----------|
 | `inspect_code` | — | +0.15 first time, +0.05 repeat |
 | `identify_bug` | `line_number: int` | +0.40 correct, +0.10 wrong |
 | `explain_bug` | `explanation: str` | +0.30 to +0.40 |
@@ -68,6 +61,7 @@ Reward Function
 Rewards are dense at every step and strictly between (0, 1) exclusive:
 
 | Outcome | Reward |
+|--------|-----|
 | All tests pass + full workflow | 0.99 + up to 0.09 bonus → clamped to 0.99 |
 | All tests pass | 0.99 |
 | Code runs, tests fail | 0.50 |
