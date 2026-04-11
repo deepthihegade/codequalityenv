@@ -84,7 +84,7 @@ class Action(BaseModel):
 
 
 def evaluate_fix(code_patch: str, task: dict):
-    """Returns reward STRICTLY between 0 and 1 — never 0.0 or 1.0"""
+    
     if not code_patch or not code_patch.strip():
         return 0.01, "No fix provided."
 
@@ -214,10 +214,10 @@ def get_state():
 
 
 def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
-    """Run inference using judges' LLM proxy. Prints structured stdout logs."""
+    
     global state
 
-   
+    
     client = OpenAI(
         api_key=os.environ["API_KEY"],
         base_url=os.environ["API_BASE_URL"],
@@ -227,7 +227,7 @@ def run_inference(num_episodes: int = 1, steps_per_episode: int = 5):
     for episode in range(num_episodes):
         state["episode_id"] = f"ep-{episode + 1}"
 
-       
+        
         for task_idx in range(len(tasks)):
             state["index"] = task_idx
             state["step_count"] = 0
