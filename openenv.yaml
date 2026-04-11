@@ -1,15 +1,33 @@
-name: code-quality-env
-version: 0.1.0
-description: RL environment where an AI agent learns to review and fix buggy Python code
+name: code-review-env
+version: 2.0.0
+description: >
+  RL environment where an AI agent acts as a senior code reviewer.
+  The agent must inspect code, identify bugs, explain root causes,
+  and submit fixes across 5 real-world Python bug patterns.
 author: Neurobytes
 tasks:
   - name: easy
-    description: Fix syntax errors in Python code
+    description: Missing return statement — function computes but never returns
   - name: medium
-    description: Fix logic bugs in Python code
+    description: Off-by-one error in binary search boundary
   - name: hard
-    description: Optimize slow Python code
-observation_space: buggy Python code snippet with error hint
-action_space: identify_bug or suggest_fix
-reward_range: [0.0, 1.0]
-min_tasks: 3
+    description: Python closure variable capture bug in lambda
+  - name: expert
+    description: Mutable default argument causes state leak across calls
+  - name: master
+    description: Bare except swallows all exceptions including SystemExit
+observation_space: >
+  buggy Python code, task level, error type hint, workflow progress flags
+  (inspected, identified, explained)
+action_space: >
+  inspect_code | identify_bug(line_number) | explain_bug(explanation) |
+  suggest_fix(code_patch) | run_tests
+reward_range: "(0, 1) exclusive"
+reward_shaping:
+  inspect_code: 0.15 first time, 0.05 repeat
+  identify_bug_correct: 0.40
+  identify_bug_wrong: 0.10
+  explain_bug: 0.30 to 0.40
+  suggest_fix_pass: 0.99 + workflow bonus
+  suggest_fix_partial: 0.05 to 0.50
+  run_tests: 0.5x of fix reward
