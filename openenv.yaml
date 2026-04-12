@@ -1,33 +1,35 @@
-name: code-review-env
-version: 2.0.0
+name: pytorch-code-review-env
+version: 3.0.0
 description: >
-  RL environment where an AI agent acts as a senior code reviewer.
-  The agent must inspect code, identify bugs, explain root causes,
-  and submit fixes across 5 real-world Python bug patterns.
+  RL environment where an AI agent acts as a senior PyTorch engineer
+  performing systematic code review. The agent inspects buggy ML training
+  code, identifies the root cause, explains the bug, and submits a fix.
+  All 5 tasks are real PyTorch bugs that occur in production ML code.
 author: Neurobytes
 tasks:
   - name: easy
-    description: Missing return statement — function computes but never returns
+    description: "Wrong loss reduction — .sum() instead of .mean() makes loss scale with batch size"
   - name: medium
-    description: Off-by-one error in binary search boundary
+    description: "Missing optimizer.zero_grad() causes gradient accumulation and exploding norms"
   - name: hard
-    description: Python closure variable capture bug in lambda
+    description: "Tensor dtype mismatch — model.double() but input stays float32, crashes forward pass"
   - name: expert
-    description: Mutable default argument causes state leak across calls
+    description: "detach() on learnable weight silently kills gradient flow to weight network"
   - name: master
-    description: Bare except swallows all exceptions including SystemExit
+    description: "Wrong batch norm axis — normalizes per sample (dim=1) instead of per feature (dim=0)"
 observation_space: >
-  buggy Python code, task level, error type hint, workflow progress flags
-  (inspected, identified, explained)
+  buggy PyTorch code, task level, task title, error type hint,
+  workflow progress flags (inspected, identified, explained)
 action_space: >
   inspect_code | identify_bug(line_number) | explain_bug(explanation) |
   suggest_fix(code_patch) | run_tests
 reward_range: "(0, 1) exclusive"
 reward_shaping:
-  inspect_code: 0.15 first time, 0.05 repeat
+  inspect_code_first: 0.15
   identify_bug_correct: 0.40
   identify_bug_wrong: 0.10
   explain_bug: 0.30 to 0.40
-  suggest_fix_pass: 0.99 + workflow bonus
+  suggest_fix_all_pass: 0.99
   suggest_fix_partial: 0.05 to 0.50
-  run_tests: 0.5x of fix reward
+  run_tests: 0.5x of last fix reward
+  workflow_bonus: +0.03 per completed step (max +0.09)
