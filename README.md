@@ -1,120 +1,93 @@
-CodeReview OpenEnv — Neurobytes
+CodeQualityEnv — PyTorch Bug Review RL Environment
 
- -A real-world RL environment where an AI agent acts as a **senior Python code reviewer**.  
- -Built for the Meta PyTorch OpenEnv Hackathon × Scaler School of Technology, Round 1.  
-Team: Neurobytes
-
-
- Real-World Task
-
-The agent simulates a **code review workflow** used daily by engineers at companies like Meta, Google, and Microsoft.
-
-Given a buggy Python function, the agent must:
-1. **Inspect** the code carefully before acting
-2. **Identify** the exact line containing the bug
-3. **Explain** the root cause of the bug
-4. **Fix** the code so all tests pass
-5. **Verify** the fix by running tests
-
-This mirrors how real engineers review PRs — not just patching blindly, but reasoning through the problem step by step.
+An RL environment where an AI agent acts as a **senior PyTorch engineer**, 
+reviewing and fixing real ML training bugs. Built for the 
+**Meta PyTorch OpenEnv Hackathon** by team **Neurobytes**.
 
 
 
+What It Does
+
+The agent is given real, subtle PyTorch bugs and must follow a structured 
+code review workflow:
+
+1. `inspect_code` — Read and understand the buggy code
+2. `identify_bug` — Pinpoint the exact line with the bug
+3. `explain_bug` — Explain technically WHY it's a bug
+4. `suggest_fix` — Submit corrected Python code
+5. `run_tests` — Verify the fix passes PyTorch test cases
 
 
- Action Space
+ The 5 PyTorch Tasks
 
-The agent has 5 actions available — designed to reward thoughtful, systematic review:
-
-| Action | Required Fields | Reward |
-|--------|----------|-----------|
-| `identify_bug` | `line_number: int` | +0.40 correct, +0.10 wrong |
-| `explain_bug` | `explanation: str` | +0.30 to +0.40 |
-| `suggest_fix` | `code_patch: str` | +0.05 to +0.99 based on tests |
-
-Workflow bonus: Agent gets +0.03 extra on `suggest_fix` for each completed prior step (inspect → identify → explain). Maximum bonus: +0.09.
+| Level | Bug Type | Description |
+|-------|----------|-------------|
+| Easy | Wrong Reduction | `.sum()` instead of `.mean()` in MSE loss |
+| Medium | Missing zero_grad | Gradient accumulation across steps |
+| Hard | dtype Mismatch | float32 input vs float64 model crash |
+| Expert | detach() abuse | Blocks gradient flow to weight network |
+| Master | Wrong Norm Axis | `dim=1` instead of `dim=0` in BatchNorm |
 
 
- Observation Space
 
-Each observation contains:
+ Reward Function
+
+| Action | Reward |
+|--------|--------|
+| inspect_code (first time) | 0.15 |
+| identify_bug (correct line) | 0.40 |
+| explain_bug (detailed) | 0.30–0.40 |
+| suggest_fix (tests pass) | 0.99 + workflow bonus |
+| suggest_fix (partial) | 0.05–0.50 |
+| run_tests | up to 0.50 |
+
+> All rewards are strictly **(0.0, 1.0) exclusive** — never exactly 0 or 1.
+
+
+🔁 Observation Space
+
 
 {
-  "buggy_code": "def binary_search(arr, target):\n    left, right = 0, len(arr)...",
-  "task_level": "medium",
-  "task_title": "Off-by-One in Binary Search",
-  "error_hint": "right boundary is len(arr) but arrays are zero-indexed...",
-  "error_type": "off-by-one",
-  "step_count": 2,
+  "buggy_code": "...",
+  "task_level": "easy/medium/hard/expert/master",
+  "task_title": "...",
+  "task_description": "...",
+  "error_hint": "...",
+  "error_type": "...",
+  "step_count": 3,
   "inspected": true,
   "identified": false,
   "explained": false
 }
 
 
+ Action Space
 
-
-Reward Function
-
-Rewards are dense at every step and strictly between (0, 1) exclusive:
-
-| Outcome | Reward |
-|--------|-----|
-| All tests pass + full workflow | 0.99 + up to 0.09 bonus → clamped to 0.99 |
-| All tests pass | 0.99 |
-| Code runs, tests fail | 0.50 |
-| Index/Type error in fix | 0.10 |
-| Syntax error in fix | 0.05 |
-| Correct bug line identified | 0.40 |
-| Wrong line identified | 0.10 |
-| Good explanation | 0.30–0.40 |
-| First inspect | 0.15 |
-| No fix / unknown action | 0.01 |
-
-All rewards clamped strictly to (0.01, 0.99)— never 0.0 or 1.0.
+{ "action_type": "inspect_code" }
+{ "action_type": "identify_bug", "line_number": 6 }
+{ "action_type": "explain_bug", "explanation": "..." }
+{ "action_type": "suggest_fix", "code_patch": "..." }
+{ "action_type": "run_tests" }
 
 
 
  API Endpoints
 
 | Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/` | Environment info |
 | POST | `/reset` | Start new episode |
-| POST | `/step` | Submit action |
-| GET | `/state` | Current episode state |
+| POST | `/step` | Take an action |
+| GET | `/state` | Current state |
 
 
 
-Setup & Run Locally
+ Inference (LLM Agent)
 
-cd codequalityenv
-pip install fastapi uvicorn openai pydantic
-
-Start the server:
-uvicorn inference:app --host 0.0.0.0 --port 8000
+API_BASE_URL=<proxy_url> API_KEY=<key> python inference.py
 
 
-Run inference (requires judges' env vars):
-
-export API_KEY=your_key
-export API_BASE_URL=https://your-proxy/v1
-export MODEL_NAME=gpt-4o-mini
-python inference.py
-
- Docker
-
-
-docker build -t codereview-env .
-docker run -p 8000:8000 \
-  -e API_KEY=your_key \
-  -e API_BASE_URL=https://your-proxy/v1 \
-  -e MODEL_NAME=gpt-4o-mini \
-  codereview-env
-
-
-HF Space
-
-[https://huggingface.co/spaces/MeghanaK4/NEUROBYTRES]
+The agent uses the LLM to explain bugs and generate fixes across all 5 tasks.
 
 
 Team Neurobytes
