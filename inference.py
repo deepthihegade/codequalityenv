@@ -242,7 +242,7 @@ state = {
 
 
 class Action(BaseModel):
-    action_type: str  # inspect_code | identify_bug | explain_bug | suggest_fix | run_tests
+    action_type: str  
     line_number: Optional[int] = None
     explanation: Optional[str] = None
     code_patch: Optional[str] = None
@@ -587,6 +587,6 @@ if __name__ == "__main__":
         sys.exit(0)
 
     signal.signal(signal.SIGALRM, _hard_timeout)
-    signal.alarm(18 * 60)  # 18 min hard limit
+    signal.alarm(18 * 60)  
 
     run_inference(num_episodes=1, steps_per_episode=6)
